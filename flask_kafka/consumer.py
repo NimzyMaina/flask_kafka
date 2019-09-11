@@ -61,7 +61,7 @@ class FlaskKafka():
                 self.interrupt_event.clear()
 
             
-    def interrupted_process(self):
+    def interrupted_process(self, *args):
         self.logger.info("closing consumer")
         self.consumer.close()
         sys.exit(0)
