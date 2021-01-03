@@ -53,7 +53,7 @@ class FlaskKafka():
         self.logger.info("starting consumer...registered signterm")
 
         for msg in self.consumer:
-            self.logger.info("TOPIC: {}, PAYLOAD: {}".format(msg.topic, msg.value))
+            self.logger.debug("TOPIC: {}, PAYLOAD: {}".format(msg.topic, msg.value))
             self._run_handlers(msg)
             # stop the consumer
             if self.interrupt_event.is_set():
