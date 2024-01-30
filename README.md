@@ -1,5 +1,7 @@
 # Flask Kafka
 
+> :warning: **Breaking Changes**: Dropping kafka-python library in favour of **confluent-kafka** due it's support & documentation
+
 This is an easy to use utility to help Flask developers to implement microservices that interact with Kafka. This library has been inspired by two other similar libraries :-
 
 - [`Flask RabbitMQ`](https://github.com/pushyzheng/flask-rabbitmq) 
@@ -25,39 +27,48 @@ $ pip install flask-kafka
 ## Simple example
 
 ```python
-from flask import Flask
-from threading import Event
-import signal
+from flask import Flask, request
 
 from flask_kafka import FlaskKafka
 app = Flask(__name__)
+app.config["KAFKA_CONFIG"] = {'bootstrap.servers': 'localhost:9092',
+                              'group.id': 'foo',
+                              'enable.auto.commit': 'false',
+                              'auto.offset.reset': 'earliest'}
 
-INTERRUPT_EVENT = Event()
+bus = FlaskKafka()
+bus.init_app(app)
 
-bus = FlaskKafka(INTERRUPT_EVENT,
-                 bootstrap_servers=",".join(["localhost:9092"]),
-                 group_id="consumer-grp-id"
-                 )
+# curl http://localhost:5004/publish/test-topic?key=foo&value=bar
 
-
-def listen_kill_server():
-    signal.signal(signal.SIGTERM, bus.interrupted_process)
-    signal.signal(signal.SIGINT, bus.interrupted_process)
-    signal.signal(signal.SIGQUIT, bus.interrupted_process)
-    signal.signal(signal.SIGHUP, bus.interrupted_process)
-
+@app.route('/publish/<topic>', methods=["get"])
+def publish(topic):
+    qstr = request.args.to_dict()
+    key = qstr['key']
+    value = qstr['value']
+    publisher = bus.get_producer()
+    publisher.produce(topic, key=key, value=value)
+    publisher.poll(1)
+    return "Published to {} => {} : {}".format(topic, key, value)
 
 @bus.handle('test-topic')
-def test_topic_handler(msg):
-    print("consumed {} from test-topic".format(msg))
+def test_topic_handler(consumer,msg):
+    print("Consumed event from topic {topic}: key = {key:12} value = {value:12}".format(
+            topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
 
+
+# or
+# bus.add_topic_handler("test-topic", lambda consumer, msg: print(msg.value()))
 
 if __name__ == '__main__':
     bus.run()
-    listen_kill_server()
-    app.run(debug=True, port=5004)
+    app.run(debug=True, port=5004, use_reloader=False)
 
 ```
+
+## Special Thanks
+
+- [cookieGeGe](https://github.com/cookieGeGe) - Contributed to new structure
 
 
 ## License
