@@ -1,35 +1,36 @@
 from flask import Flask
-from threading import Event
-import signal
+from example.bus import bus
+from example.listener import register_listeners
+from rest import rest
+# from flask_kafka import FlaskKafka3
 
-from flask_kafka import FlaskKafka
 app = Flask(__name__)
-
-INTERRUPT_EVENT = Event()
-
-bus = FlaskKafka(INTERRUPT_EVENT,
-                 bootstrap_servers=",".join(["localhost:9092"]),
-                 group_id="consumer-grp-id"
-                 )
-
-# Register termination listener
-def listen_kill_server():
-    signal.signal(signal.SIGTERM, bus.interrupted_process)
-    signal.signal(signal.SIGINT, bus.interrupted_process)
-    signal.signal(signal.SIGQUIT, bus.interrupted_process)
-    signal.signal(signal.SIGHUP, bus.interrupted_process)
+app.config["KAFKA_CONFIG"] = {'bootstrap.servers': 'localhost:9092',
+                              'group.id': 'foo',
+                              'enable.auto.commit': 'false',
+                              'auto.offset.reset': 'earliest'}
 
 
-# Handle message received from a Kafka topic
-@bus.handle('reaper-mpesa')
-def test_topic_handler(msg):
-    print("consumed {} from test-topic".format(msg))
+# bus = FlaskKafka3() # Can be instantiated here or an external file
+bus.init_app(app)  # 1. MUST be called before any handlers are registered (sets up 'default' consumer & producer)
+
+
+# @bus.handle('mpesa-reaper')  # 2. MUST be called b4 bus.run() (registers handlers to consumers)
+# def test_topic_handler(consumer, msg):
+#     print("Consumed event from topic {topic}: key = {key:12} value = {value:12}".format(
+#         topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
 
 
 if __name__ == '__main__':
     # Start consuming from the Kafka server
-    bus.run()
-    # Termination listener
-    listen_kill_server()
+    print('running app...')
+
+    # Register handlers from an external file
+    register_listeners()  # 2. MUST be called b4 bus.run() (registers handlers to consumers)
+
+    bus.run()  # 3. MUST be called LAST after consumers & handlers have been set up
+
+    app.register_blueprint(rest)
+
     # Start Flask server
-    app.run(debug=True, port=5004)
+    app.run(port=5004, debug=True, use_reloader=False)
